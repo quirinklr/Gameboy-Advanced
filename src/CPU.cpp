@@ -126,17 +126,31 @@ void CPU::armDataProcessing(uint32_t instruction) {
         uint8_t Rm = instruction & 0xF;
         uint8_t shiftType = (instruction >> 5) & 3;
         int shiftAmount;
+        bool isRRX = false;
+
+        uint32_t rmVal = registers[Rm];
+        if (Rm == 15) rmVal += 4;
 
         if ((instruction >> 4) & 1) {
             uint8_t Rs = (instruction >> 8) & 0xF;
             shiftAmount = registers[Rs] & 0xFF;
         } else {
             shiftAmount = (instruction >> 7) & 0x1F;
+            if (shiftAmount == 0) {
+                if (shiftType == 1 || shiftType == 2) {
+                    shiftAmount = 32;
+                } else if (shiftType == 3) {
+                    bool oldCarry = (cpsr >> 29) & 1;
+                    op2 = (oldCarry << 31) | (rmVal >> 1);
+                    shiftCarry = rmVal & 1;
+                    isRRX = true;
+                }
+            }
         }
 
-        uint32_t rmVal = registers[Rm];
-        if (Rm == 15) rmVal += 4;
-        op2 = shiftValue(rmVal, shiftType, shiftAmount, shiftCarry);
+        if (!isRRX) {
+            op2 = shiftValue(rmVal, shiftType, shiftAmount, shiftCarry);
+        }
     }
 
     uint32_t result = 0;
