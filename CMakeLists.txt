@@ -54,3 +54,13 @@ set(TEST_SOURCES
 add_executable(GBA_Tests ${TEST_SOURCES})
 target_include_directories(GBA_Tests PRIVATE src)
 target_compile_definitions(GBA_Tests PRIVATE HEADLESS_TEST)
+
+add_executable(GBA_PPU_Tests 
+    tests/test_ppu_runner.cpp
+    src/GBA.cpp
+    src/CPU.cpp
+    src/MMU.cpp
+    src/PPU.cpp
+)
+target_include_directories(GBA_PPU_Tests PRIVATE src tests)
+target_compile_definitions(GBA_PPU_Tests PRIVATE HEADLESS_TEST)
