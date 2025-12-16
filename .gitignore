@@ -1,0 +1,28 @@
+# Test ROMs
+gba-tests/
+
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# IDE files
+.vs/
+.vscode/
+*.sln
+*.vcxproj*
+.idea/
+*.user
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+
+# OS files
+.DS_Store
+Thumbs.db
