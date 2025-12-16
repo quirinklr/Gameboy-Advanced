@@ -77,6 +77,8 @@ void PPU::renderScanline() {
             }
             break;
     }
+
+    renderSprites();
 }
 
 void PPU::renderMode0() {
@@ -236,6 +238,109 @@ void PPU::renderMode5() {
 }
 
 void PPU::renderSprites() {
+    uint16_t dispcnt = mmu.getDisplayControl();
+    if (!(dispcnt & 0x1000)) return;
+
+    bool mapping1D = (dispcnt >> 6) & 1;
+    uint8_t* vram = mmu.getVRAM();
+    uint8_t* oam = mmu.getOAM();
+    uint8_t* palette = mmu.getPalette();
+
+    const int widths[3][4] = {
+        {8, 16, 32, 64},
+        {16, 32, 32, 64},
+        {8, 8, 16, 32}
+    };
+    const int heights[3][4] = {
+        {8, 16, 32, 64},
+        {8, 8, 16, 32},
+        {16, 32, 32, 64}
+    };
+
+    for (int i = 0; i < 128; i++) {
+        uint16_t attr0 = oam[i * 8] | (oam[i * 8 + 1] << 8);
+        uint16_t attr1 = oam[i * 8 + 2] | (oam[i * 8 + 3] << 8);
+        uint16_t attr2 = oam[i * 8 + 4] | (oam[i * 8 + 5] << 8);
+
+        int y = attr0 & 0xFF;
+        int mode = (attr0 >> 8) & 3; 
+        if (mode == 2) continue;
+        
+        bool isAffine = (attr0 >> 8) & 1;
+        if (isAffine) continue;
+
+        int shape = (attr0 >> 14) & 3;
+        int size = (attr1 >> 14) & 3;
+
+        int width = widths[shape][size];
+        int height = heights[shape][size];
+
+        if (y >= 160) y -= 256;
+
+        if (scanline >= y && scanline < y + height) {
+            int x = attr1 & 0x1FF;
+            if (x >= 240) x -= 512;
+
+            bool hFlip = (attr1 >> 12) & 1;
+            bool vFlip = (attr1 >> 13) & 1;
+            bool color256 = (attr0 >> 13) & 1;
+
+            int tileIndex = attr2 & 0x3FF;
+            int priority = (attr2 >> 10) & 3;
+            int paletteBank = (attr2 >> 12) & 0xF;
+
+            int spriteY = scanline - y;
+            if (vFlip) spriteY = height - 1 - spriteY;
+
+            for (int spriteX = 0; spriteX < width; spriteX++) {
+                int screenX = x + spriteX;
+                if (screenX < 0 || screenX >= SCREEN_WIDTH) continue;
+
+                int texX = hFlip ? (width - 1 - spriteX) : spriteX;
+
+                uint32_t tileAddr = 0x10000;
+                
+                int tileRow = spriteY / 8;
+                int tileCol = texX / 8;
+                
+                int currentTileIndex = tileIndex;
+                if (mapping1D) {
+                    int tilesInSpriteRow = width / 8;
+                    currentTileIndex += tileRow * tilesInSpriteRow + tileCol;
+                     if (color256) currentTileIndex *= 2;
+                } else {
+                    int startX = tileIndex % 32;
+                    int startY = tileIndex / 32;
+                    int currentX = (startX + tileCol) % 32;
+                    int currentY = (startY + tileRow) % 32;
+                    
+                    currentTileIndex = currentY * 32 + currentX;
+                }
+
+                int pixelInTileX = texX % 8;
+                int pixelInTileY = spriteY % 8;
+
+                uint8_t colorIdx = 0;
+                if (!color256) {
+                     uint32_t addr = tileAddr + currentTileIndex * 32 + (pixelInTileY * 4) + (pixelInTileX / 2);
+                     uint8_t byte = vram[addr & 0x17FFF];
+                     if (pixelInTileX & 1) colorIdx = (byte >> 4) & 0xF;
+                     else colorIdx = byte & 0xF;
+                } else {
+                     uint32_t addr = tileAddr + currentTileIndex * 64 + (pixelInTileY * 8) + pixelInTileX;
+                     colorIdx = vram[addr & 0x17FFF];
+                }
+
+                if (colorIdx != 0) {
+                     int finalColorIdx = colorIdx;
+                     if (!color256) finalColorIdx += paletteBank * 16;
+                     
+                     uint16_t color = palette[0x200 + finalColorIdx * 2] | (palette[0x200 + finalColorIdx * 2 + 1] << 8);
+                     framebuffer[scanline * SCREEN_WIDTH + screenX] = rgb15to32(color);
+                }
+            }
+        }
+    }
 }
 
 uint32_t PPU::rgb15to32(uint16_t color) {

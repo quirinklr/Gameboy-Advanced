@@ -8,7 +8,6 @@
 
 namespace fs = std::filesystem;
 
-// Run emulator for N frames and return the framebuffer
 Bitmap runTest(const std::string& romPath, int frames) {
     GBA gba;
     if (!gba.loadROM(romPath)) {
@@ -16,14 +15,6 @@ Bitmap runTest(const std::string& romPath, int frames) {
         return {};
     }
 
-    // Run 0 frames? No, run checks
-    // Mode 3 is 240x160.
-    // 1 frame = 1232 * 228 cycles approx? No.
-    // GBA.step() steps CPU. We should step Frame.
-    // We don't have GBA::stepFrame(), we have to step cycles.
-    // Frame is ~280896 cycles.
-    
-    // Run for the specified number of frames
     for (int i = 0; i < frames; ++i) {
         gba.runFrame();
     }
@@ -63,7 +54,7 @@ int main(int argc, char* argv[]) {
 
             std::cout << "Testing " << entry.path().filename() << "... ";
 
-            Bitmap result = runTest(romPath, 5); // Run 5 frames
+            Bitmap result = runTest(romPath, 5);
             
             if (fs::exists(expectedPath)) {
                 Bitmap expected = Bitmap::load(expectedPath);
@@ -76,8 +67,8 @@ int main(int argc, char* argv[]) {
                 }
             } else {
                 std::cout << "GENERATED (No reference)" << std::endl;
-                result.save(expectedPath); // Create golden image if missing
-                passed++; // Treat as pass for generation
+                result.save(expectedPath);
+                passed++;
             }
         }
     }
