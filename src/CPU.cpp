@@ -125,7 +125,7 @@ void CPU::armSingleDataSwap(uint32_t instruction) {
         if (rotation) {
             temp = (temp >> rotation) | (temp << (32 - rotation));
         }
-        mmu.write32(alignedAddr, registers[Rm]); // SWP word writes do NOT rotate, but address is aligned
+        mmu.write32(alignedAddr, registers[Rm]);  
     }
 
     registers[Rd] = temp;
@@ -511,7 +511,6 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
     bool userBankTransfer = S && !((regList >> 15) & 1);
     CPUMode mode = getCurrentMode();
 
-    // Writeback value calculation
     uint32_t wbVal;
     if (U) {
         wbVal = base + wbCount * 4;
@@ -519,7 +518,6 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
         wbVal = base - wbCount * 4;
     }
 
-    // Writeback for LDM (Load wins over WB if base in list)
     if (L && W && !(userBankTransfer)) {
         registers[Rn] = wbVal;
     }
@@ -532,11 +530,9 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
         }
     }
 
-    // Loop
     for (int i = 0; i < 16; i++) {
         if (regList & (1 << i)) {
             if (L) {
-                // ... same load logic ...
                 uint32_t val = mmu.read32(address);
                 if (userBankTransfer) {
                    if (i < 8) registers[i] = val;
@@ -567,7 +563,6 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
                     else val = bankedUSR[i - 8];
                 } else {
                     if (i == Rn && W) {
-                        // STM Quirk: Store Old Base if First, else New Base
                         if (i == firstReg) val = base;
                         else val = wbVal;
                     } else {
@@ -581,7 +576,6 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
         }
     }
 
-    // Writeback for STM (Store uses OLD base logic, doesn't affect WB itself)
     if (!L && W && !(userBankTransfer)) {
         registers[Rn] = wbVal;
     }
@@ -1096,12 +1090,12 @@ void CPU::thumbHiRegisterOps(uint16_t instruction) {
     }
 
     switch (op) {
-        case 0: // ADD
+        case 0:  
             destVal += sourceVal;
             if (Rd == 15) destVal &= ~1;
             registers[Rd] = destVal;
             break;
-        case 1: { // CMP
+        case 1: {  
             uint64_t diff = (uint64_t)destVal - sourceVal;
             uint32_t result = (uint32_t)diff;
             bool carry = destVal >= sourceVal;
@@ -1109,12 +1103,12 @@ void CPU::thumbHiRegisterOps(uint16_t instruction) {
             setNZCV(result, carry, overflow);
             return;
         }
-        case 2: // MOV
+        case 2:  
             destVal = sourceVal;
             if (Rd == 15) destVal &= ~1;
             registers[Rd] = destVal;
             break;
-        case 3: // BX
+        case 3:  
             if (sourceVal & 1) {
                 cpsr |= (1 << 5);
                 registers[15] = sourceVal & ~1;
@@ -1480,7 +1474,6 @@ uint32_t CPU::shiftValue(uint32_t value, int shiftType, int shiftAmount, bool& c
             carryOut = (value >> (shiftAmount - 1)) & 1;
             return (int32_t)value >> shiftAmount;
         case 3:
-            // ROR
             if (shiftAmount == 0) {
                 return value;
             }

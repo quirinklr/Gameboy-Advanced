@@ -156,8 +156,8 @@ void testROMExecution(const std::string& romPath) {
     runner.runCycles(2000000);
     
     runner.dumpIORegs();
-    // Check for success (R7 == 0 for Thumb tests, R12 for ARM)
-    uint32_t resultReg = runner.getRegister(7); // R7 is used in thumb.asm
+     
+    uint32_t resultReg = runner.getRegister(7);  
     if (resultReg == 0) {
         std::cout << "SUCCESS: All tests passed!" << std::endl;
     } else {

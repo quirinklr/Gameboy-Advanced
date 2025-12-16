@@ -118,7 +118,6 @@ void MMU::write8(uint32_t address, uint8_t value) {
             palette[address & 0x3FF] = value;
             break;
         case 0x06: {
-            // VRAM byte write: mirrored to both bytes of halfword
             address &= 0x1FFFF;
             if (address >= 0x18000) address -= 0x8000;
             uint32_t base = address & ~1;
@@ -137,13 +136,11 @@ void MMU::write8(uint32_t address, uint8_t value) {
 }
 
 void MMU::write16(uint32_t address, uint16_t value) {
-    // Optimization and VRAM correctness: Handle aligned writes directly
-    // Special handling for VRAM to avoid 8-bit mirroring effect of write8
     uint32_t region = (address >> 24) & 0xFF;
     if (region == 0x06) {
         address &= 0x1FFFF;
         if (address >= 0x18000) address -= 0x8000;
-        address &= ~1; // Align
+        address &= ~1;  
         vram[address] = value & 0xFF;
         vram[address + 1] = (value >> 8) & 0xFF;
         return;
