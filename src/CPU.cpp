@@ -332,8 +332,19 @@ void CPU::armSingleDataTransfer(uint32_t instruction) {
         uint8_t Rm = instruction & 0xF;
         uint8_t shiftType = (instruction >> 5) & 3;
         int shiftAmount = (instruction >> 7) & 0x1F;
-        bool carry;
+        bool carry = (cpsr >> 29) & 1;
+        
+        if (shiftAmount == 0) {
+            if (shiftType == 1 || shiftType == 2) {
+                shiftAmount = 32;
+            } else if (shiftType == 3) {
+                bool oldCarry = (cpsr >> 29) & 1;
+                offset = (oldCarry << 31) | (registers[Rm] >> 1);
+                goto offset_done;
+            }
+        }
         offset = shiftValue(registers[Rm], shiftType, shiftAmount, carry);
+        offset_done:;
     } else {
         offset = instruction & 0xFFF;
     }
@@ -369,9 +380,9 @@ void CPU::armSingleDataTransfer(uint32_t instruction) {
 
     if (!P) {
         address = U ? base + offset : base - offset;
-        registers[Rn] = address;
+        if (!L || Rd != Rn) registers[Rn] = address;
     } else if (W) {
-        registers[Rn] = address;
+        if (!L || Rd != Rn) registers[Rn] = address;
     }
 }
 
@@ -402,31 +413,42 @@ void CPU::armHalfwordDataTransfer(uint32_t instruction) {
 
     if (L) {
         switch (SH) {
-            case 1:
-                registers[Rd] = mmu.read16(address);
+            case 1: {
+                uint32_t alignedAddr = address & ~1;
+                uint32_t value = mmu.read16(alignedAddr);
+                if (address & 1) {
+                    value = (value >> 8) | (value << 24);
+                }
+                registers[Rd] = value;
                 break;
+            }
             case 2: {
                 int8_t val = mmu.read8(address);
                 registers[Rd] = (uint32_t)(int32_t)val;
                 break;
             }
             case 3: {
-                int16_t val = mmu.read16(address);
-                registers[Rd] = (uint32_t)(int32_t)val;
+                if (address & 1) {
+                    int8_t val = mmu.read8(address);
+                    registers[Rd] = (uint32_t)(int32_t)val;
+                } else {
+                    int16_t val = mmu.read16(address);
+                    registers[Rd] = (uint32_t)(int32_t)val;
+                }
                 break;
             }
         }
     } else {
         if (SH == 1) {
-            mmu.write16(address, registers[Rd] & 0xFFFF);
+            mmu.write16(address & ~1, registers[Rd] & 0xFFFF);
         }
     }
 
     if (!P) {
         address = U ? base + offset : base - offset;
-        registers[Rn] = address;
+        if (!L || Rd != Rn) registers[Rn] = address;
     } else if (W) {
-        registers[Rn] = address;
+        if (!L || Rd != Rn) registers[Rn] = address;
     }
 }
 
