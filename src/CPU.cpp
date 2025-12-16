@@ -79,6 +79,8 @@ void CPU::executeARM(uint32_t instruction) {
 
     if ((instruction & 0x0FFFFFF0) == 0x012FFF10) {
         armBranchExchange(instruction);
+    } else if ((instruction & 0x0FB00FF0) == 0x01000090) {
+        armSingleDataSwap(instruction);
     } else if ((instruction & 0x0FBF0FFF) == 0x010F0000) {
         armMRS(instruction);
     } else if ((instruction & 0x0FB0FFF0) == 0x0120F000) {
@@ -102,6 +104,31 @@ void CPU::executeARM(uint32_t instruction) {
     } else if ((instruction & 0x0C000000) == 0x00000000) {
         armDataProcessing(instruction);
     }
+}
+
+void CPU::armSingleDataSwap(uint32_t instruction) {
+    bool B = (instruction >> 22) & 1;
+    uint8_t Rn = (instruction >> 16) & 0xF;
+    uint8_t Rd = (instruction >> 12) & 0xF;
+    uint8_t Rm = instruction & 0xF;
+
+    uint32_t address = registers[Rn];
+    uint32_t temp;
+
+    if (B) {
+        temp = mmu.read8(address);
+        mmu.write8(address, registers[Rm] & 0xFF);
+    } else {
+        uint32_t alignedAddr = address & ~3;
+        temp = mmu.read32(alignedAddr);
+        int rotation = (address & 3) * 8;
+        if (rotation) {
+            temp = (temp >> rotation) | (temp << (32 - rotation));
+        }
+        mmu.write32(alignedAddr, registers[Rm]); // SWP word writes do NOT rotate, but address is aligned
+    }
+
+    registers[Rd] = temp;
 }
 
 void CPU::armDataProcessing(uint32_t instruction) {
@@ -461,6 +488,9 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
     uint8_t Rn = (instruction >> 16) & 0xF;
     uint16_t regList = instruction & 0xFFFF;
 
+    bool emptyList = (regList == 0);
+    if (emptyList) regList = 0x8000;
+
     (void)S;
 
     uint32_t base = registers[Rn];
@@ -468,31 +498,92 @@ void CPU::armBlockDataTransfer(uint32_t instruction) {
     for (int i = 0; i < 16; i++) {
         if (regList & (1 << i)) count++;
     }
+    
+    int wbCount = emptyList ? 16 : count;
 
     uint32_t address;
     if (U) {
         address = P ? base + 4 : base;
     } else {
-        address = P ? base - count * 4 : base - count * 4 + 4;
+        address = P ? base - wbCount * 4 : base - wbCount * 4 + 4;
     }
 
+    bool userBankTransfer = S && !((regList >> 15) & 1);
+    CPUMode mode = getCurrentMode();
+
+    // Writeback value calculation
+    uint32_t wbVal;
+    if (U) {
+        wbVal = base + wbCount * 4;
+    } else {
+        wbVal = base - wbCount * 4;
+    }
+
+    // Writeback for LDM (Load wins over WB if base in list)
+    if (L && W && !(userBankTransfer)) {
+        registers[Rn] = wbVal;
+    }
+    
+    int firstReg = -1;
+    for (int i = 0; i < 16; i++) {
+        if (regList & (1 << i)) {
+            firstReg = i;
+            break;
+        }
+    }
+
+    // Loop
     for (int i = 0; i < 16; i++) {
         if (regList & (1 << i)) {
             if (L) {
-                registers[i] = mmu.read32(address);
+                // ... same load logic ...
+                uint32_t val = mmu.read32(address);
+                if (userBankTransfer) {
+                   if (i < 8) registers[i] = val;
+                   else if (mode == CPUMode::FIQ) bankedUSR[i - 8] = val;
+                   else if (i < 13) registers[i] = val;
+                   else bankedUSR[i - 8] = val;
+                } else {
+                   registers[i] = val; 
+                    if (i == 15) {
+                        if (S) {
+                            int idx = getSPSRIndex();
+                            if (idx >= 0) {
+                                uint32_t newCPSR = spsr[idx];
+                                if ((newCPSR & 0x1F) != (cpsr & 0x1F)) {
+                                    switchMode(static_cast<CPUMode>(newCPSR & 0x1F));
+                                }
+                                cpsr = newCPSR;
+                            }
+                        }
+                    }
+                }
             } else {
-                mmu.write32(address, registers[i]);
+                uint32_t val;
+                if (userBankTransfer) {
+                    if (i < 8) val = registers[i];
+                    else if (mode == CPUMode::FIQ) val = bankedUSR[i - 8];
+                    else if (i < 13) val = registers[i];
+                    else val = bankedUSR[i - 8];
+                } else {
+                    if (i == Rn && W) {
+                        // STM Quirk: Store Old Base if First, else New Base
+                        if (i == firstReg) val = base;
+                        else val = wbVal;
+                    } else {
+                        val = registers[i];
+                        if (i == 15) val += 8;
+                    }
+                }
+                mmu.write32(address, val);
             }
             address += 4;
         }
     }
 
-    if (W) {
-        if (U) {
-            registers[Rn] = base + count * 4;
-        } else {
-            registers[Rn] = base - count * 4;
-        }
+    // Writeback for STM (Store uses OLD base logic, doesn't affect WB itself)
+    if (!L && W && !(userBankTransfer)) {
+        registers[Rn] = wbVal;
     }
 }
 
@@ -990,28 +1081,46 @@ void CPU::thumbHiRegisterOps(uint16_t instruction) {
     uint8_t Rs = ((instruction >> 3) & 7) | (H2 << 3);
     uint8_t Rd = (instruction & 7) | (H1 << 3);
 
+    uint32_t sourceVal;
+    if (Rs == 15) {
+        sourceVal = registers[15] + 2;
+    } else {
+        sourceVal = registers[Rs];
+    }
+
+    uint32_t destVal;
+    if (Rd == 15) {
+        destVal = registers[15] + 2;
+    } else {
+        destVal = registers[Rd];
+    }
+
     switch (op) {
-        case 0:
-            registers[Rd] += registers[Rs];
+        case 0: // ADD
+            destVal += sourceVal;
+            if (Rd == 15) destVal &= ~1;
+            registers[Rd] = destVal;
             break;
-        case 1: {
-            uint64_t diff = (uint64_t)registers[Rd] - registers[Rs];
+        case 1: { // CMP
+            uint64_t diff = (uint64_t)destVal - sourceVal;
             uint32_t result = (uint32_t)diff;
-            bool carry = registers[Rd] >= registers[Rs];
-            bool overflow = ((registers[Rd] ^ registers[Rs]) & (registers[Rd] ^ result)) >> 31;
+            bool carry = destVal >= sourceVal;
+            bool overflow = ((destVal ^ sourceVal) & (destVal ^ result)) >> 31;
             setNZCV(result, carry, overflow);
             return;
         }
-        case 2:
-            registers[Rd] = registers[Rs];
+        case 2: // MOV
+            destVal = sourceVal;
+            if (Rd == 15) destVal &= ~1;
+            registers[Rd] = destVal;
             break;
-        case 3:
-            if (registers[Rs] & 1) {
+        case 3: // BX
+            if (sourceVal & 1) {
                 cpsr |= (1 << 5);
-                registers[15] = registers[Rs] & ~1;
+                registers[15] = sourceVal & ~1;
             } else {
                 cpsr &= ~(1 << 5);
-                registers[15] = registers[Rs] & ~3;
+                registers[15] = sourceVal & ~3;
             }
             return;
     }
@@ -1042,7 +1151,10 @@ void CPU::thumbLoadStoreRegOffset(uint16_t instruction) {
         if (B) {
             registers[Rd] = mmu.read8(address);
         } else {
-            registers[Rd] = mmu.read32(address);
+            uint32_t val = mmu.read32(address & ~3);
+            int rotation = (address & 3) * 8;
+            if (rotation) val = rotateRight(val, rotation);
+            registers[Rd] = val;
         }
     } else {
         if (B) {
@@ -1071,11 +1183,22 @@ void CPU::thumbLoadStoreSignExtend(uint16_t instruction) {
             break;
         }
         case 2:
-            registers[Rd] = mmu.read16(address);
+            if (address & 1) {
+                uint32_t val = mmu.read16(address & ~1);
+                val = (val >> 8) | (val << 24);
+                registers[Rd] = val;
+            } else {
+                registers[Rd] = mmu.read16(address);
+            }
             break;
         case 3: {
-            int16_t val = mmu.read16(address);
-            registers[Rd] = (uint32_t)(int32_t)val;
+            if (address & 1) {
+                int8_t val = mmu.read8(address);
+                registers[Rd] = (uint32_t)(int32_t)val;
+            } else {
+                int16_t val = mmu.read16(address);
+                registers[Rd] = (uint32_t)(int32_t)val;
+            }
             break;
         }
     }
@@ -1099,7 +1222,10 @@ void CPU::thumbLoadStoreImmediate(uint16_t instruction) {
         if (B) {
             registers[Rd] = mmu.read8(address);
         } else {
-            registers[Rd] = mmu.read32(address);
+            uint32_t val = mmu.read32(address & ~3);
+            int rotation = (address & 3) * 8;
+            if (rotation) val = rotateRight(val, rotation);
+            registers[Rd] = val;
         }
     } else {
         if (B) {
@@ -1119,7 +1245,13 @@ void CPU::thumbLoadStoreHalfword(uint16_t instruction) {
     uint32_t address = registers[Rb] + (offset << 1);
 
     if (L) {
-        registers[Rd] = mmu.read16(address);
+        if (address & 1) {
+            uint32_t val = mmu.read16(address & ~1);
+            val = (val >> 8) | (val << 24);
+            registers[Rd] = val;
+        } else {
+            registers[Rd] = mmu.read16(address);
+        }
     } else {
         mmu.write16(address, registers[Rd] & 0xFFFF);
     }
@@ -1133,7 +1265,10 @@ void CPU::thumbSPRelativeLoadStore(uint16_t instruction) {
     uint32_t address = registers[13] + (imm << 2);
 
     if (L) {
-        registers[Rd] = mmu.read32(address);
+        uint32_t val = mmu.read32(address & ~3);
+        int rotation = (address & 3) * 8;
+        if (rotation) val = rotateRight(val, rotation);
+        registers[Rd] = val;
     } else {
         mmu.write32(address, registers[Rd]);
     }
@@ -1147,7 +1282,7 @@ void CPU::thumbLoadAddress(uint16_t instruction) {
     if (SP) {
         registers[Rd] = registers[13] + (imm << 2);
     } else {
-        registers[Rd] = (registers[15] & ~2) + (imm << 2);
+        registers[Rd] = ((registers[15] + 2) & ~2) + (imm << 2);
     }
 }
 
@@ -1198,13 +1333,41 @@ void CPU::thumbMultipleLoadStore(uint16_t instruction) {
     uint8_t regList = instruction & 0xFF;
 
     uint32_t address = registers[Rb];
+    
+    if (regList == 0) {
+        if (L) {
+            registers[15] = mmu.read32(address) & ~1;
+        } else {
+            mmu.write32(address, registers[15] + 4);
+        }
+        registers[Rb] = address + 0x40;
+        return;
+    }
+
+    int count = 0;
+    for (int i = 0; i < 8; i++) {
+        if (regList & (1 << i)) count++;
+    }
+    uint32_t wbVal = address + count * 4;
+
+    int firstReg = -1;
+    for (int i = 0; i < 8; i++) {
+        if (regList & (1 << i)) {
+            firstReg = i;
+            break;
+        }
+    }
 
     for (int i = 0; i < 8; i++) {
         if (regList & (1 << i)) {
             if (L) {
                 registers[i] = mmu.read32(address);
             } else {
-                mmu.write32(address, registers[i]);
+                uint32_t val = registers[i];
+                if (i == Rb && i != firstReg) {
+                    val = wbVal;
+                }
+                mmu.write32(address, val);
             }
             address += 4;
         }
@@ -1317,10 +1480,15 @@ uint32_t CPU::shiftValue(uint32_t value, int shiftType, int shiftAmount, bool& c
             carryOut = (value >> (shiftAmount - 1)) & 1;
             return (int32_t)value >> shiftAmount;
         case 3:
-            shiftAmount &= 31;
+            // ROR
             if (shiftAmount == 0) {
                 return value;
             }
+            if ((shiftAmount & 0x1F) == 0) {
+                 carryOut = (value >> 31) & 1;
+                 return value;
+            }
+            shiftAmount &= 0x1F;
             carryOut = (value >> (shiftAmount - 1)) & 1;
             return rotateRight(value, shiftAmount);
     }
@@ -1363,7 +1531,7 @@ void CPU::switchMode(CPUMode newMode) {
         for (int i = 0; i < 7; i++) registers[8 + i] = bankedFIQ[i];
     }
 
-    if (!oldIsFIQ && oldMode != CPUMode::User && oldMode != CPUMode::System) {
+    if (!oldIsFIQ) {
         switch (oldMode) {
             case CPUMode::IRQ:
                 bankedIRQ[0] = registers[13];
@@ -1381,12 +1549,17 @@ void CPU::switchMode(CPUMode newMode) {
                 bankedUND[0] = registers[13];
                 bankedUND[1] = registers[14];
                 break;
+            case CPUMode::User:
+            case CPUMode::System:
+                bankedUSR[5] = registers[13];
+                bankedUSR[6] = registers[14];
+                break;
             default:
                 break;
         }
     }
 
-    if (!newIsFIQ && newMode != CPUMode::User && newMode != CPUMode::System) {
+    if (!newIsFIQ) {
         switch (newMode) {
             case CPUMode::IRQ:
                 registers[13] = bankedIRQ[0];
@@ -1403,6 +1576,11 @@ void CPU::switchMode(CPUMode newMode) {
             case CPUMode::Undefined:
                 registers[13] = bankedUND[0];
                 registers[14] = bankedUND[1];
+                break;
+            case CPUMode::User:
+            case CPUMode::System:
+                registers[13] = bankedUSR[5];
+                registers[14] = bankedUSR[6];
                 break;
             default:
                 break;

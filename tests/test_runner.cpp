@@ -156,12 +156,12 @@ void testROMExecution(const std::string& romPath) {
     runner.runCycles(2000000);
     
     runner.dumpIORegs();
-    runner.dumpPalette();
-    
-    if (runner.checkPaletteNotEmpty()) {
-        std::cout << "[PASS] Palette has data" << std::endl;
+    // Check for success (R7 == 0 for Thumb tests, R12 for ARM)
+    uint32_t resultReg = runner.getRegister(7); // R7 is used in thumb.asm
+    if (resultReg == 0) {
+        std::cout << "SUCCESS: All tests passed!" << std::endl;
     } else {
-        std::cout << "[FAIL] Palette is empty" << std::endl;
+        std::cout << "FAILURE: Failed at test " << std::dec << resultReg << std::endl;
     }
     
     if (runner.checkVRAMNotEmpty()) {

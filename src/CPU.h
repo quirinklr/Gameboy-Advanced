@@ -50,6 +50,7 @@ private:
     void armMRS(uint32_t instruction);
     void armMSR(uint32_t instruction);
     void armMSRImm(uint32_t instruction);
+    void armSingleDataSwap(uint32_t instruction);
     void armSoftwareInterrupt(uint32_t instruction);
     void handleSWI(uint8_t comment);
 
