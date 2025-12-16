@@ -152,8 +152,8 @@ void testROMExecution(const std::string& romPath) {
     runner.dumpState();
     runner.dumpIORegs();
     
-    std::cout << "\n--- Running 500000 cycles ---" << std::endl;
-    runner.runCycles(500000);
+    std::cout << "\n--- Running 2000000 cycles ---" << std::endl;
+    runner.runCycles(2000000);
     
     runner.dumpIORegs();
     runner.dumpPalette();

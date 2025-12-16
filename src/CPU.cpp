@@ -87,6 +87,8 @@ void CPU::executeARM(uint32_t instruction) {
         armMSRImm(instruction);
     } else if ((instruction & 0x0E000000) == 0x0A000000) {
         armBranch(instruction);
+    } else if ((instruction & 0x0F8000F0) == 0x00800090) {
+        armMultiplyLong(instruction);
     } else if ((instruction & 0x0FC000F0) == 0x00000090) {
         armMultiply(instruction);
     } else if ((instruction & 0x0C000000) == 0x04000000) {
@@ -263,12 +265,21 @@ void CPU::armDataProcessing(uint32_t instruction) {
                 cpsr = newCPSR;
             }
         }
+    } else if (S && Rd == 15 && opcode_dp >= 0x8 && opcode_dp <= 0xB) {
+        int idx = getSPSRIndex();
+        if (idx >= 0) {
+            uint32_t newCPSR = spsr[idx];
+            if ((newCPSR & 0x1F) != (cpsr & 0x1F)) {
+                switchMode(static_cast<CPUMode>(newCPSR & 0x1F));
+            }
+            cpsr = newCPSR;
+        }
     }
 
     if (S && Rd != 15) {
-        if (opcode_dp >= 0x8 && opcode_dp <= 0xB) {
+        if (opcode_dp == 0xA || opcode_dp == 0xB) {
             setNZCV(result, carry, overflow);
-        } else if (opcode_dp <= 0x1 || opcode_dp >= 0xC) {
+        } else if (opcode_dp <= 0x1 || opcode_dp == 0x8 || opcode_dp == 0x9 || opcode_dp >= 0xC) {
             setNZ(result);
             cpsr = (cpsr & ~(1 << 29)) | (shiftCarry << 29);
         } else {
@@ -475,6 +486,40 @@ void CPU::armMultiply(uint32_t instruction) {
     }
 }
 
+void CPU::armMultiplyLong(uint32_t instruction) {
+    bool U = (instruction >> 22) & 1;
+    bool A = (instruction >> 21) & 1;
+    bool S = (instruction >> 20) & 1;
+    uint8_t RdHi = (instruction >> 16) & 0xF;
+    uint8_t RdLo = (instruction >> 12) & 0xF;
+    uint8_t Rs = (instruction >> 8) & 0xF;
+    uint8_t Rm = instruction & 0xF;
+
+    uint64_t result;
+    if (U) {
+        int64_t m = (int32_t)registers[Rm];
+        int64_t s = (int32_t)registers[Rs];
+        result = (uint64_t)(m * s);
+    } else {
+        uint64_t m = registers[Rm];
+        uint64_t s = registers[Rs];
+        result = m * s;
+    }
+
+    if (A) {
+        uint64_t acc = ((uint64_t)registers[RdHi] << 32) | registers[RdLo];
+        result += acc;
+    }
+
+    registers[RdLo] = (uint32_t)result;
+    registers[RdHi] = (uint32_t)(result >> 32);
+
+    if (S) {
+        cpsr &= ~((1 << 31) | (1 << 30));
+        if (result == 0) cpsr |= (1 << 30);
+        if (result & 0x8000000000000000ULL) cpsr |= (1 << 31);
+    }
+}
 void CPU::armMRS(uint32_t instruction) {
     bool useSPSR = (instruction >> 22) & 1;
     uint8_t Rd = (instruction >> 12) & 0xF;

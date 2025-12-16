@@ -46,6 +46,7 @@ private:
     void armHalfwordDataTransfer(uint32_t instruction);
     void armBlockDataTransfer(uint32_t instruction);
     void armMultiply(uint32_t instruction);
+    void armMultiplyLong(uint32_t instruction);
     void armMRS(uint32_t instruction);
     void armMSR(uint32_t instruction);
     void armMSRImm(uint32_t instruction);
