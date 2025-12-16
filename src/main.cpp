@@ -79,9 +79,26 @@ int main(int argc, char* argv[]) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 running = false;
-            } else if (event.type == SDL_KEYDOWN) {
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
-                    running = false;
+            } else if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+                bool pressed = (event.type == SDL_KEYDOWN);
+                int key = -1;
+
+                switch (event.key.keysym.sym) {
+                    case SDLK_z: key = 0; break;
+                    case SDLK_x: key = 1; break;
+                    case SDLK_BACKSPACE: key = 2; break;
+                    case SDLK_RETURN: key = 3; break;
+                    case SDLK_RIGHT: key = 4; break;
+                    case SDLK_LEFT: key = 5; break;
+                    case SDLK_UP: key = 6; break;
+                    case SDLK_DOWN: key = 7; break;
+                    case SDLK_a: key = 8; break;
+                    case SDLK_s: key = 9; break;
+                    case SDLK_ESCAPE: running = false; break;
+                }
+
+                if (key != -1) {
+                    gba.updateKey(key, pressed);
                 }
             }
         }

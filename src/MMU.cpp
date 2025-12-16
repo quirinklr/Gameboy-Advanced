@@ -50,6 +50,12 @@ uint8_t MMU::read8(uint32_t address) {
             return iwram[address & 0x7FFF];
         case 0x04: {
             uint32_t reg = (address & 0x3FF) >> 1;
+            
+            if (reg == 0x130 / 2) {
+                if (address & 1) return (keyInput >> 8) & 0xFF;
+                return keyInput & 0xFF;
+            }
+
             if (address & 1) {
                 return (io[reg] >> 8) & 0xFF;
             }

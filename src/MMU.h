@@ -47,6 +47,8 @@ public:
     void setIF(uint16_t value) { io[0x101] = value; }
     uint16_t getIME() const { return io[0x104]; }
 
+    void setKeyInput(uint16_t state) { keyInput = state; }
+
 private:
     std::array<uint8_t, 0x4000> bios{};
     std::array<uint8_t, 0x40000> ewram{};
@@ -61,4 +63,5 @@ private:
     PPU* ppu = nullptr;
 
     bool biosLoaded = false;
+    uint16_t keyInput = 0x03FF;
 };

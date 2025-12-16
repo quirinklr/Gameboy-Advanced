@@ -20,6 +20,8 @@ public:
     bool isFrameReady() const;
     void clearFrameReady();
 
+    void updateKey(int id, bool pressed);
+
 private:
     std::unique_ptr<MMU> mmu;
     std::unique_ptr<CPU> cpu;

@@ -46,3 +46,13 @@ bool GBA::isFrameReady() const {
 void GBA::clearFrameReady() {
     ppu->clearFrameReady();
 }
+
+void GBA::updateKey(int id, bool pressed) {
+    static uint16_t currentKeys = 0x03FF;
+    if (pressed) {
+        currentKeys &= ~(1 << id);
+    } else {
+        currentKeys |= (1 << id);
+    }
+    mmu->setKeyInput(currentKeys);
+}
