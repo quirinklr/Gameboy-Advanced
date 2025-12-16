@@ -75,11 +75,16 @@ void CPU::executeARM(uint32_t instruction) {
         return;
     }
 
-    uint32_t opcode = (instruction >> 20) & 0xFF;
     uint32_t bits74 = (instruction >> 4) & 0xF;
 
     if ((instruction & 0x0FFFFFF0) == 0x012FFF10) {
         armBranchExchange(instruction);
+    } else if ((instruction & 0x0FBF0FFF) == 0x010F0000) {
+        armMRS(instruction);
+    } else if ((instruction & 0x0FB0FFF0) == 0x0120F000) {
+        armMSR(instruction);
+    } else if ((instruction & 0x0FB0F000) == 0x0320F000) {
+        armMSRImm(instruction);
     } else if ((instruction & 0x0E000000) == 0x0A000000) {
         armBranch(instruction);
     } else if ((instruction & 0x0FC000F0) == 0x00000090) {
@@ -105,6 +110,8 @@ void CPU::armDataProcessing(uint32_t instruction) {
     uint8_t Rd = (instruction >> 12) & 0xF;
 
     uint32_t op1 = registers[Rn];
+    if (Rn == 15) op1 += 4;
+    
     uint32_t op2;
     bool shiftCarry = (cpsr >> 29) & 1;
 
@@ -127,7 +134,9 @@ void CPU::armDataProcessing(uint32_t instruction) {
             shiftAmount = (instruction >> 7) & 0x1F;
         }
 
-        op2 = shiftValue(registers[Rm], shiftType, shiftAmount, shiftCarry);
+        uint32_t rmVal = registers[Rm];
+        if (Rm == 15) rmVal += 4;
+        op2 = shiftValue(rmVal, shiftType, shiftAmount, shiftCarry);
     }
 
     uint32_t result = 0;
@@ -256,10 +265,10 @@ void CPU::armBranch(uint32_t instruction) {
     offset <<= 2;
 
     if (L) {
-        registers[14] = registers[15] - 4;
+        registers[14] = registers[15];
     }
 
-    registers[15] += offset;
+    registers[15] += offset + 4;
 }
 
 void CPU::armBranchExchange(uint32_t instruction) {
@@ -444,13 +453,198 @@ void CPU::armMultiply(uint32_t instruction) {
     }
 }
 
+void CPU::armMRS(uint32_t instruction) {
+    bool useSPSR = (instruction >> 22) & 1;
+    uint8_t Rd = (instruction >> 12) & 0xF;
+    
+    if (useSPSR) {
+        registers[Rd] = spsr[0];
+    } else {
+        registers[Rd] = cpsr;
+    }
+}
+
+void CPU::armMSR(uint32_t instruction) {
+    bool useSPSR = (instruction >> 22) & 1;
+    uint8_t Rm = instruction & 0xF;
+    uint32_t value = registers[Rm];
+    uint32_t mask = 0;
+    
+    if ((instruction >> 16) & 1) mask |= 0x000000FF;
+    if ((instruction >> 17) & 1) mask |= 0x0000FF00;
+    if ((instruction >> 18) & 1) mask |= 0x00FF0000;
+    if ((instruction >> 19) & 1) mask |= 0xFF000000;
+    
+    if (useSPSR) {
+        spsr[0] = (spsr[0] & ~mask) | (value & mask);
+    } else {
+        cpsr = (cpsr & ~mask) | (value & mask);
+    }
+}
+
+void CPU::armMSRImm(uint32_t instruction) {
+    bool useSPSR = (instruction >> 22) & 1;
+    uint8_t imm = instruction & 0xFF;
+    uint8_t rotate = ((instruction >> 8) & 0xF) * 2;
+    uint32_t value = rotateRight(imm, rotate);
+    uint32_t mask = 0;
+    
+    if ((instruction >> 16) & 1) mask |= 0x000000FF;
+    if ((instruction >> 17) & 1) mask |= 0x0000FF00;
+    if ((instruction >> 18) & 1) mask |= 0x00FF0000;
+    if ((instruction >> 19) & 1) mask |= 0xFF000000;
+    
+    if (useSPSR) {
+        spsr[0] = (spsr[0] & ~mask) | (value & mask);
+    } else {
+        cpsr = (cpsr & ~mask) | (value & mask);
+    }
+}
+
 void CPU::armSoftwareInterrupt(uint32_t instruction) {
-    (void)instruction;
-    spsr[1] = cpsr;
-    cpsr = (cpsr & ~0x1F) | static_cast<uint32_t>(CPUMode::Supervisor);
-    cpsr |= (1 << 7);
-    registers[14] = registers[15] - 4;
-    registers[15] = 0x08;
+    uint8_t comment = (instruction >> 16) & 0xFF;
+    handleSWI(comment);
+}
+
+void CPU::handleSWI(uint8_t comment) {
+    switch (comment) {
+        case 0x00:
+            break;
+        case 0x01:
+            break;
+        case 0x02:
+            break;
+        case 0x05: {
+            int16_t a = static_cast<int16_t>(registers[0] & 0xFFFF);
+            int16_t b = static_cast<int16_t>(registers[1] & 0xFFFF);
+            if (a < 0) a = -a;
+            if (b < 0) b = -b;
+            while (b != 0) {
+                int16_t t = b;
+                b = a % b;
+                a = t;
+            }
+            registers[0] = a;
+            break;
+        }
+        case 0x06: {
+            int32_t numerator = static_cast<int32_t>(registers[0]);
+            int32_t denominator = static_cast<int32_t>(registers[1]);
+            if (denominator == 0) {
+                break;
+            }
+            int32_t quotient = numerator / denominator;
+            int32_t remainder = numerator % denominator;
+            registers[0] = static_cast<uint32_t>(quotient);
+            registers[1] = static_cast<uint32_t>(remainder);
+            registers[3] = static_cast<uint32_t>(quotient < 0 ? -quotient : quotient);
+            break;
+        }
+        case 0x07: {
+            int32_t numerator = static_cast<int32_t>(registers[1]);
+            int32_t denominator = static_cast<int32_t>(registers[0]);
+            if (denominator == 0) {
+                break;
+            }
+            int32_t quotient = numerator / denominator;
+            int32_t remainder = numerator % denominator;
+            registers[0] = static_cast<uint32_t>(quotient);
+            registers[1] = static_cast<uint32_t>(remainder);
+            registers[3] = static_cast<uint32_t>(quotient < 0 ? -quotient : quotient);
+            break;
+        }
+        case 0x08: {
+            uint32_t n = registers[0];
+            if (n == 0) {
+                registers[0] = 0;
+                break;
+            }
+            uint32_t x = n;
+            uint32_t y = (x + 1) >> 1;
+            while (y < x) {
+                x = y;
+                y = (x + n / x) >> 1;
+            }
+            registers[0] = x;
+            break;
+        }
+        case 0x09: {
+            uint16_t theta = registers[0] & 0xFFFF;
+            uint32_t result;
+            int idx = (theta >> 6) & 0xFF;
+            static const int16_t sincosTable[256] = {
+                0, 402, 804, 1206, 1607, 2009, 2410, 2811,
+                3211, 3611, 4011, 4409, 4808, 5205, 5602, 5997,
+                6392, 6786, 7179, 7571, 7961, 8351, 8739, 9126,
+                9512, 9896, 10278, 10659, 11039, 11416, 11793, 12167,
+                12539, 12910, 13278, 13645, 14010, 14372, 14732, 15090,
+                15446, 15800, 16151, 16499, 16846, 17189, 17530, 17869,
+                18204, 18537, 18868, 19195, 19519, 19841, 20159, 20475,
+                20787, 21097, 21403, 21706, 22005, 22301, 22594, 22884,
+                23170, 23453, 23732, 24007, 24279, 24547, 24812, 25073,
+                25330, 25583, 25832, 26077, 26319, 26557, 26790, 27020,
+                27245, 27466, 27684, 27897, 28106, 28310, 28511, 28707,
+                28898, 29086, 29269, 29447, 29621, 29791, 29956, 30117,
+                30273, 30425, 30572, 30714, 30852, 30985, 31114, 31237,
+                31357, 31471, 31581, 31685, 31785, 31881, 31971, 32057,
+                32138, 32214, 32285, 32351, 32413, 32469, 32521, 32568,
+                32610, 32647, 32679, 32706, 32728, 32745, 32758, 32765,
+                32767, 32765, 32758, 32745, 32728, 32706, 32679, 32647,
+                32610, 32568, 32521, 32469, 32413, 32351, 32285, 32214,
+                32138, 32057, 31971, 31881, 31785, 31685, 31581, 31471,
+                31357, 31237, 31114, 30985, 30852, 30714, 30572, 30425,
+                30273, 30117, 29956, 29791, 29621, 29447, 29269, 29086,
+                28898, 28707, 28511, 28310, 28106, 27897, 27684, 27466,
+                27245, 27020, 26790, 26557, 26319, 26077, 25832, 25583,
+                25330, 25073, 24812, 24547, 24279, 24007, 23732, 23453,
+                23170, 22884, 22594, 22301, 22005, 21706, 21403, 21097,
+                20787, 20475, 20159, 19841, 19519, 19195, 18868, 18537,
+                18204, 17869, 17530, 17189, 16846, 16499, 16151, 15800,
+                15446, 15090, 14732, 14372, 14010, 13645, 13278, 12910,
+                12539, 12167, 11793, 11416, 11039, 10659, 10278, 9896,
+                9512, 9126, 8739, 8351, 7961, 7571, 7179, 6786,
+                6392, 5997, 5602, 5205, 4808, 4409, 4011, 3611,
+                3211, 2811, 2410, 2009, 1607, 1206, 804, 402
+            };
+            result = sincosTable[idx];
+            registers[0] = result;
+            break;
+        }
+        case 0x0B:
+        case 0x0C: {
+            uint32_t src = registers[0];
+            uint32_t dst = registers[1];
+            uint32_t cnt = registers[2];
+            bool fill = (cnt >> 24) & 1;
+            bool word = (cnt >> 26) & 1;
+            uint32_t count = cnt & 0x1FFFFF;
+            
+            if (word) {
+                uint32_t value = mmu.read32(src);
+                for (uint32_t i = 0; i < count; i++) {
+                    mmu.write32(dst, value);
+                    dst += 4;
+                    if (!fill) {
+                        src += 4;
+                        value = mmu.read32(src);
+                    }
+                }
+            } else {
+                uint16_t value = mmu.read16(src);
+                for (uint32_t i = 0; i < count; i++) {
+                    mmu.write16(dst, value);
+                    dst += 2;
+                    if (!fill) {
+                        src += 2;
+                        value = mmu.read16(src);
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 void CPU::executeThumb(uint16_t instruction) {
@@ -508,7 +702,15 @@ void CPU::thumbMoveShiftedRegister(uint16_t instruction) {
     uint8_t Rd = instruction & 7;
 
     bool carry = (cpsr >> 29) & 1;
-    uint32_t result = shiftValue(registers[Rs], op, offset == 0 ? 32 : offset, carry);
+    uint32_t result;
+    
+    if (op == 0 && offset == 0) {
+        result = registers[Rs];
+    } else if (op != 0 && offset == 0) {
+        result = shiftValue(registers[Rs], op, 32, carry);
+    } else {
+        result = shiftValue(registers[Rs], op, offset, carry);
+    }
 
     registers[Rd] = result;
     setNZ(result);
@@ -932,17 +1134,13 @@ void CPU::thumbConditionalBranch(uint16_t instruction) {
     }
 
     if (take) {
-        registers[15] += (int32_t)offset * 2;
+        registers[15] += (int32_t)offset * 2 + 2;
     }
 }
 
 void CPU::thumbSoftwareInterrupt(uint16_t instruction) {
-    (void)instruction;
-    spsr[1] = cpsr;
-    cpsr = (cpsr & ~0x1F) | static_cast<uint32_t>(CPUMode::Supervisor);
-    cpsr |= (1 << 7);
-    registers[14] = registers[15] - 2;
-    registers[15] = 0x08;
+    uint8_t comment = instruction & 0xFF;
+    handleSWI(comment);
 }
 
 void CPU::thumbUnconditionalBranch(uint16_t instruction) {
@@ -950,7 +1148,7 @@ void CPU::thumbUnconditionalBranch(uint16_t instruction) {
     if (offset & 0x400) {
         offset |= 0xF800;
     }
-    registers[15] += offset * 2;
+    registers[15] += offset * 2 + 2;
 }
 
 void CPU::thumbLongBranchLink(uint16_t instruction) {
@@ -962,9 +1160,9 @@ void CPU::thumbLongBranchLink(uint16_t instruction) {
         if (off & 0x400) {
             off |= 0xFFFFF800;
         }
-        registers[14] = registers[15] + (off << 12);
+        registers[14] = registers[15] + 2 + (off << 12);
     } else {
-        uint32_t temp = registers[15] - 2;
+        uint32_t temp = registers[15];
         registers[15] = (registers[14] + (offset << 1)) & ~1;
         registers[14] = temp | 1;
     }

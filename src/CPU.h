@@ -46,7 +46,11 @@ private:
     void armHalfwordDataTransfer(uint32_t instruction);
     void armBlockDataTransfer(uint32_t instruction);
     void armMultiply(uint32_t instruction);
+    void armMRS(uint32_t instruction);
+    void armMSR(uint32_t instruction);
+    void armMSRImm(uint32_t instruction);
     void armSoftwareInterrupt(uint32_t instruction);
+    void handleSWI(uint8_t comment);
 
     void thumbMoveShiftedRegister(uint16_t instruction);
     void thumbAddSubtract(uint16_t instruction);

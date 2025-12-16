@@ -37,25 +37,21 @@ void PPU::step(int cycles) {
         }
 
         mmu.setVCount(scanline);
-
-        uint16_t dispstat = mmu.getDisplayStatus();
-        dispstat &= ~0x7;
-
-        if (scanline >= VDRAW_LINES) {
-            dispstat |= 1;
-        }
-
-        if (dot >= HDRAW_CYCLES && dot < SCANLINE_CYCLES) {
-            dispstat |= 2;
-        }
-
-        uint8_t vcountCompare = (dispstat >> 8) & 0xFF;
-        if (scanline == vcountCompare) {
-            dispstat |= 4;
-        }
-
-        mmu.setDisplayStatus(dispstat);
     }
+
+    uint16_t dispstat = mmu.getDisplayStatus();
+    dispstat &= 0xFFF8;
+
+    if (scanline >= VDRAW_LINES && scanline < TOTAL_LINES) {
+        dispstat |= 1;
+    }
+
+    uint8_t vcountCompare = (dispstat >> 8) & 0xFF;
+    if (scanline == vcountCompare) {
+        dispstat |= 4;
+    }
+
+    mmu.setDisplayStatus(dispstat);
 }
 
 void PPU::renderScanline() {

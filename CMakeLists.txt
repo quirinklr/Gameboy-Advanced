@@ -42,3 +42,15 @@ if(WIN32)
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
     )
 endif()
+
+set(TEST_SOURCES
+    tests/test_runner.cpp
+    src/GBA.cpp
+    src/CPU.cpp
+    src/MMU.cpp
+    src/PPU.cpp
+)
+
+add_executable(GBA_Tests ${TEST_SOURCES})
+target_include_directories(GBA_Tests PRIVATE src)
+target_compile_definitions(GBA_Tests PRIVATE HEADLESS_TEST)
