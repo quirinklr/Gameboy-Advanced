@@ -74,6 +74,9 @@ private:
 
     void setNZ(uint32_t result);
     void setNZCV(uint32_t result, bool carry, bool overflow);
+    void switchMode(CPUMode newMode);
+    int getSPSRIndex();
+    CPUMode getCurrentMode();
 
     uint32_t shiftValue(uint32_t value, int shiftType, int shiftAmount, bool& carryOut);
     uint32_t rotateRight(uint32_t value, int amount);
@@ -84,6 +87,7 @@ private:
     uint32_t cpsr = 0;
     std::array<uint32_t, 5> spsr{};
 
+    std::array<uint32_t, 7> bankedUSR{};
     std::array<uint32_t, 7> bankedFIQ{};
     std::array<uint32_t, 2> bankedIRQ{};
     std::array<uint32_t, 2> bankedSVC{};

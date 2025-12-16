@@ -250,9 +250,14 @@ void CPU::armDataProcessing(uint32_t instruction) {
 
     if (writeResult) {
         registers[Rd] = result;
-        if (Rd == 15) {
-            if (S) {
-                cpsr = spsr[0];
+        if (Rd == 15 && S) {
+            int idx = getSPSRIndex();
+            if (idx >= 0) {
+                uint32_t newCPSR = spsr[idx];
+                if ((newCPSR & 0x1F) != (cpsr & 0x1F)) {
+                    switchMode(static_cast<CPUMode>(newCPSR & 0x1F));
+                }
+                cpsr = newCPSR;
             }
         }
     }
@@ -490,9 +495,14 @@ void CPU::armMSR(uint32_t instruction) {
     if ((instruction >> 19) & 1) mask |= 0xFF000000;
     
     if (useSPSR) {
-        spsr[0] = (spsr[0] & ~mask) | (value & mask);
+        int idx = getSPSRIndex();
+        if (idx >= 0) spsr[idx] = (spsr[idx] & ~mask) | (value & mask);
     } else {
-        cpsr = (cpsr & ~mask) | (value & mask);
+        uint32_t newCPSR = (cpsr & ~mask) | (value & mask);
+        if ((mask & 0x1F) && ((newCPSR & 0x1F) != (cpsr & 0x1F))) {
+            switchMode(static_cast<CPUMode>(newCPSR & 0x1F));
+        }
+        cpsr = newCPSR;
     }
 }
 
@@ -509,9 +519,14 @@ void CPU::armMSRImm(uint32_t instruction) {
     if ((instruction >> 19) & 1) mask |= 0xFF000000;
     
     if (useSPSR) {
-        spsr[0] = (spsr[0] & ~mask) | (value & mask);
+        int idx = getSPSRIndex();
+        if (idx >= 0) spsr[idx] = (spsr[idx] & ~mask) | (value & mask);
     } else {
-        cpsr = (cpsr & ~mask) | (value & mask);
+        uint32_t newCPSR = (cpsr & ~mask) | (value & mask);
+        if ((mask & 0x1F) && ((newCPSR & 0x1F) != (cpsr & 0x1F))) {
+            switchMode(static_cast<CPUMode>(newCPSR & 0x1F));
+        }
+        cpsr = newCPSR;
     }
 }
 
@@ -1238,4 +1253,83 @@ uint32_t CPU::rotateRight(uint32_t value, int amount) {
     amount &= 31;
     if (amount == 0) return value;
     return (value >> amount) | (value << (32 - amount));
+}
+
+CPUMode CPU::getCurrentMode() {
+    return static_cast<CPUMode>(cpsr & 0x1F);
+}
+
+int CPU::getSPSRIndex() {
+    switch (getCurrentMode()) {
+        case CPUMode::FIQ: return 0;
+        case CPUMode::IRQ: return 1;
+        case CPUMode::Supervisor: return 2;
+        case CPUMode::Abort: return 3;
+        case CPUMode::Undefined: return 4;
+        default: return -1;
+    }
+}
+
+void CPU::switchMode(CPUMode newMode) {
+    CPUMode oldMode = getCurrentMode();
+    if (oldMode == newMode) return;
+    
+    bool oldIsFIQ = (oldMode == CPUMode::FIQ);
+    bool newIsFIQ = (newMode == CPUMode::FIQ);
+
+    if (oldIsFIQ) {
+        for (int i = 0; i < 7; i++) bankedFIQ[i] = registers[8 + i];
+        for (int i = 0; i < 7; i++) registers[8 + i] = bankedUSR[i];
+    } else if (newIsFIQ) {
+        for (int i = 0; i < 7; i++) bankedUSR[i] = registers[8 + i];
+        for (int i = 0; i < 7; i++) registers[8 + i] = bankedFIQ[i];
+    }
+
+    if (!oldIsFIQ && oldMode != CPUMode::User && oldMode != CPUMode::System) {
+        switch (oldMode) {
+            case CPUMode::IRQ:
+                bankedIRQ[0] = registers[13];
+                bankedIRQ[1] = registers[14];
+                break;
+            case CPUMode::Supervisor:
+                bankedSVC[0] = registers[13];
+                bankedSVC[1] = registers[14];
+                break;
+            case CPUMode::Abort:
+                bankedABT[0] = registers[13];
+                bankedABT[1] = registers[14];
+                break;
+            case CPUMode::Undefined:
+                bankedUND[0] = registers[13];
+                bankedUND[1] = registers[14];
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (!newIsFIQ && newMode != CPUMode::User && newMode != CPUMode::System) {
+        switch (newMode) {
+            case CPUMode::IRQ:
+                registers[13] = bankedIRQ[0];
+                registers[14] = bankedIRQ[1];
+                break;
+            case CPUMode::Supervisor:
+                registers[13] = bankedSVC[0];
+                registers[14] = bankedSVC[1];
+                break;
+            case CPUMode::Abort:
+                registers[13] = bankedABT[0];
+                registers[14] = bankedABT[1];
+                break;
+            case CPUMode::Undefined:
+                registers[13] = bankedUND[0];
+                registers[14] = bankedUND[1];
+                break;
+            default:
+                break;
+        }
+    }
+
+    cpsr = (cpsr & ~0x1F) | static_cast<uint32_t>(newMode);
 }
