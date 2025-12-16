@@ -27,6 +27,7 @@ private:
     void renderMode4();
     void renderMode5();
     void renderSprites();
+    void renderBackground(int bg);
 
     uint32_t rgb15to32(uint16_t color);
 

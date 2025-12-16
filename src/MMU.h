@@ -38,6 +38,10 @@ public:
     void setVCount(uint16_t value) { io[3] = value; }
     void setDisplayStatus(uint16_t value) { io[2] = value; }
 
+    uint16_t getBGControl(int bg) const { return io[0x08 / 2 + bg]; }
+    uint16_t getBGXOffset(int bg) const { return io[0x10 / 2 + bg * 2]; }
+    uint16_t getBGYOffset(int bg) const { return io[0x12 / 2 + bg * 2]; }
+
     uint16_t getIE() const { return io[0x100]; }
     uint16_t getIF() const { return io[0x101]; }
     void setIF(uint16_t value) { io[0x101] = value; }

@@ -80,8 +80,108 @@ void PPU::renderScanline() {
 }
 
 void PPU::renderMode0() {
+    uint8_t* palette = mmu.getPalette();
+    uint16_t backdropColor = palette[0] | (palette[1] << 8);
+    uint32_t backdrop32 = rgb15to32(backdropColor);
+
     for (int x = 0; x < SCREEN_WIDTH; x++) {
-        framebuffer[scanline * SCREEN_WIDTH + x] = 0xFF000000;
+        framebuffer[scanline * SCREEN_WIDTH + x] = backdrop32;
+    }
+
+    uint16_t dispcnt = mmu.getDisplayControl();
+
+    for (int priority = 3; priority >= 0; priority--) {
+        for (int bg = 3; bg >= 0; bg--) {
+            if (dispcnt & (1 << (8 + bg))) {
+                uint16_t bgcnt = mmu.getBGControl(bg);
+                if ((bgcnt & 3) == priority) {
+                    renderBackground(bg);
+                }
+            }
+        }
+    }
+}
+
+void PPU::renderBackground(int bg) {
+    uint16_t bgcnt = mmu.getBGControl(bg);
+    uint16_t bghofs = mmu.getBGXOffset(bg);
+    uint16_t bgvofs = mmu.getBGYOffset(bg);
+
+    int charBaseBlock = (bgcnt >> 2) & 3;
+    int screenBaseBlock = (bgcnt >> 8) & 0x1F;
+    bool color256 = (bgcnt >> 7) & 1;
+    int screenSize = (bgcnt >> 14) & 3;
+
+    int priority = bgcnt & 3; 
+
+    uint32_t charBase = charBaseBlock * 0x4000;
+    uint32_t screenBase = screenBaseBlock * 0x800;
+
+    int width = 256;
+    int height = 256;
+
+    if (screenSize == 1) width = 512;
+    if (screenSize == 2) height = 512;
+    if (screenSize == 3) { width = 512; height = 512; }
+
+    uint8_t* vram = mmu.getVRAM();
+    uint8_t* palette = mmu.getPalette();
+
+    for (int x = 0; x < SCREEN_WIDTH; x++) {
+        int xx = (x + bghofs) % width;
+        int yy = (scanline + bgvofs) % height;
+
+        int screenBlockX = xx / 256;
+        int screenBlockY = yy / 256;
+        int screenBlockIndex = 0;
+
+        if (screenSize == 0) screenBlockIndex = 0; 
+        else if (screenSize == 1) screenBlockIndex = screenBlockX;
+        else if (screenSize == 2) screenBlockIndex = screenBlockY; 
+        else screenBlockIndex = screenBlockY * 2 + screenBlockX;
+
+        int tileX = (xx % 256) / 8;
+        int tileY = (yy % 256) / 8;
+        int tileMapIndex = tileY * 32 + tileX;
+
+        uint32_t mapAddr = screenBase + screenBlockIndex * 0x800 + tileMapIndex * 2;
+        uint16_t tileData = vram[mapAddr] | (vram[mapAddr + 1] << 8);
+
+        int tileIndex = tileData & 0x3FF;
+        bool hFlip = (tileData >> 10) & 1;
+        bool vFlip = (tileData >> 11) & 1;
+        int paletteBank = (tileData >> 12) & 0xF;
+
+        int tilePixelX = xx % 8;
+        int tilePixelY = yy % 8;
+
+        if (hFlip) tilePixelX = 7 - tilePixelX;
+        if (vFlip) tilePixelY = 7 - tilePixelY;
+
+        uint8_t param = 0;
+        uint32_t colorIndex = 0;
+
+        if (!color256) {
+            uint32_t tileAddr = charBase + tileIndex * 32 + (tilePixelY * 4) + (tilePixelX / 2);
+            uint8_t byte = vram[tileAddr];
+            if (tilePixelX & 1) param = (byte >> 4) & 0xF;
+            else param = byte & 0xF;
+            
+            if (param != 0) {
+                colorIndex = paletteBank * 16 + param;
+            }
+        } else {
+            uint32_t tileAddr = charBase + tileIndex * 64 + (tilePixelY * 8) + tilePixelX;
+            param = vram[tileAddr];
+            if (param != 0) {
+                colorIndex = param;
+            }
+        }
+
+        if (param != 0) {
+            uint16_t color = palette[colorIndex * 2] | (palette[colorIndex * 2 + 1] << 8);
+            framebuffer[scanline * SCREEN_WIDTH + x] = rgb15to32(color);
+        }
     }
 }
 
