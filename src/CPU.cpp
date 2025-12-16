@@ -349,13 +349,21 @@ void CPU::armSingleDataTransfer(uint32_t instruction) {
         if (B) {
             registers[Rd] = mmu.read8(address);
         } else {
-            registers[Rd] = mmu.read32(address);
+            uint32_t alignedAddr = address & ~3;
+            uint32_t value = mmu.read32(alignedAddr);
+            int rotation = (address & 3) * 8;
+            if (rotation) {
+                value = (value >> rotation) | (value << (32 - rotation));
+            }
+            registers[Rd] = value;
         }
     } else {
+        uint32_t storeValue = registers[Rd];
+        if (Rd == 15) storeValue += 8;
         if (B) {
-            mmu.write8(address, registers[Rd] & 0xFF);
+            mmu.write8(address, storeValue & 0xFF);
         } else {
-            mmu.write32(address, registers[Rd]);
+            mmu.write32(address, storeValue);
         }
     }
 
