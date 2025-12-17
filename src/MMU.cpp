@@ -32,6 +32,7 @@ bool MMU::loadROM(const std::string& path) {
         return false;
     }
 
+    detectSaveType();
     return true;
 }
 
@@ -87,6 +88,9 @@ uint8_t MMU::read8(uint32_t address) {
             return 0;
         case 0x0E:
         case 0x0F:
+            if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+                return flash.read(address);
+            }
             return sram[address & 0xFFFF];
     }
 
@@ -97,6 +101,10 @@ uint16_t MMU::read16(uint32_t address) {
     uint32_t region = (address >> 24) & 0xFF;
     
     if (region == 0x0E || region == 0x0F) {
+        if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+            uint8_t val = flash.read(address);
+            return val | (val << 8);
+        }
         uint8_t val = sram[address & 0xFFFF];
         return val | (val << 8);
     }
@@ -109,6 +117,10 @@ uint32_t MMU::read32(uint32_t address) {
     uint32_t region = (address >> 24) & 0xFF;
     
     if (region == 0x0E || region == 0x0F) {
+        if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+            uint8_t val = flash.read(address);
+            return val | (val << 8) | (val << 16) | (val << 24);
+        }
         uint8_t val = sram[address & 0xFFFF];
         return val | (val << 8) | (val << 16) | (val << 24);
     }
@@ -167,7 +179,11 @@ void MMU::write8(uint32_t address, uint8_t value) {
             break;
         case 0x0E:
         case 0x0F:
-            sram[address & 0xFFFF] = value;
+            if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+                flash.write(address, value);
+            } else {
+                sram[address & 0xFFFF] = value;
+            }
             break;
     }
 }
@@ -177,7 +193,11 @@ void MMU::write16(uint32_t address, uint16_t value) {
     
     if (region == 0x0E || region == 0x0F) {
         uint8_t byteToWrite = (address & 1) ? ((value >> 8) & 0xFF) : (value & 0xFF);
-        sram[address & 0xFFFF] = byteToWrite;
+        if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+            flash.write(address, byteToWrite);
+        } else {
+            sram[address & 0xFFFF] = byteToWrite;
+        }
         return;
     }
     
@@ -215,7 +235,11 @@ void MMU::write32(uint32_t address, uint32_t value) {
     if (region == 0x0E || region == 0x0F) {
         int byteIndex = address & 3;
         uint8_t byteToWrite = (value >> (byteIndex * 8)) & 0xFF;
-        sram[address & 0xFFFF] = byteToWrite;
+        if (saveType == SaveType::Flash64K || saveType == SaveType::Flash128K) {
+            flash.write(address, byteToWrite);
+        } else {
+            sram[address & 0xFFFF] = byteToWrite;
+        }
         return;
     }
     
@@ -259,4 +283,23 @@ uint16_t MMU::readIO(uint32_t address) {
 void MMU::writeIO(uint32_t address, uint16_t value) {
     uint32_t reg = (address & 0x3FF) >> 1;
     io[reg] = value;
+}
+
+void MMU::detectSaveType() {
+    saveType = SaveType::SRAM;
+    
+    std::string romStr(rom.begin(), rom.end());
+    
+    if (romStr.find("FLASH1M_V") != std::string::npos ||
+        romStr.find("FLASH_V") != std::string::npos) {
+        saveType = SaveType::Flash128K;
+        flash.setSize(FlashSize::Flash128K);
+    } else if (romStr.find("FLASH512_V") != std::string::npos) {
+        saveType = SaveType::Flash64K;
+        flash.setSize(FlashSize::Flash64K);
+    } else if (romStr.find("EEPROM_V") != std::string::npos) {
+        saveType = SaveType::EEPROM;
+    } else if (romStr.find("SRAM_V") != std::string::npos) {
+        saveType = SaveType::SRAM;
+    }
 }

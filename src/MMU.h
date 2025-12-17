@@ -4,8 +4,17 @@
 #include <array>
 #include <vector>
 #include <string>
+#include "Flash.h"
 
 class PPU;
+
+enum class SaveType {
+    None,
+    SRAM,
+    Flash64K,
+    Flash128K,
+    EEPROM
+};
 
 class MMU {
 public:
@@ -54,6 +63,7 @@ public:
     uint32_t getCpuPC() const { return cpuPC; }
 
 private:
+    void detectSaveType();
     std::array<uint8_t, 0x4000> bios{};
     std::array<uint8_t, 0x40000> ewram{};
     std::array<uint8_t, 0x8000> iwram{};
@@ -63,6 +73,7 @@ private:
     std::array<uint8_t, 0x400> oam{};
     std::vector<uint8_t> rom;
     std::array<uint8_t, 0x10000> sram{};
+    Flash flash;
 
     PPU* ppu = nullptr;
 
@@ -70,4 +81,5 @@ private:
     uint16_t keyInput = 0x03FF;
     uint32_t cpuPC = 0x08000000;
     uint32_t lastBiosFetch = 0xE129F000;
+    SaveType saveType = SaveType::SRAM;
 };
