@@ -15,11 +15,17 @@ void CPU::reset() {
     bankedSVC.fill(0);
     bankedABT.fill(0);
     bankedUND.fill(0);
+    bankedUSR.fill(0);
     cycles = 0;
 
     registers[15] = 0x08000000;
     registers[13] = 0x03007F00;
+
+    bankedIRQ[0] = 0x03007FA0;
+    bankedSVC[0] = 0x03007FE0;
+    bankedUSR[5] = 0x03007F00;
 }
+
 
 void CPU::step() {
     mmu.setCpuPC(registers[15]);
@@ -739,10 +745,35 @@ void CPU::handleSWI(uint8_t comment) {
             break;
         case 0x01:
             break;
-        case 0x02:
-        case 0x04:
-        case 0x05:
+        case 0x02: {
             break;
+        }
+        case 0x04: {
+            uint16_t ie = mmu.getIE();
+            uint16_t if_ = mmu.getIF();
+            uint16_t mask = registers[1] & 0xFFFF;
+            
+            if (registers[0] != 0) {
+                mmu.setIF(if_ & ~mask);
+                if_ = mmu.getIF();
+            }
+            
+            if (ie & if_ & mask) {
+                mmu.setIF(if_ & ~mask);
+            }
+            break;
+        }
+        case 0x05: {
+            registers[0] = 1;
+            registers[1] = 1;
+            
+            uint16_t if_ = mmu.getIF();
+            if (if_ & 0x01) {
+                mmu.setIF(if_ & ~0x01);
+            }
+            break;
+        }
+
         case 0x06: {
             int32_t numerator = static_cast<int32_t>(registers[0]);
             int32_t denominator = static_cast<int32_t>(registers[1]);
