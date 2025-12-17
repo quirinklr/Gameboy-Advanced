@@ -68,3 +68,15 @@ void GBA::updateKey(int id, bool pressed) {
     }
     mmu->setKeyInput(currentKeys);
 }
+
+uint16_t GBA::getDISPCNT() const {
+    return mmu->getDisplayControl();
+}
+
+uint16_t GBA::getIME() const {
+    return mmu->getIME();
+}
+
+uint16_t GBA::getIE() const {
+    return mmu->getIE();
+}

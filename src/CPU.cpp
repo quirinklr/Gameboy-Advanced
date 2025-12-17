@@ -1,6 +1,7 @@
 #include "CPU.h"
 #include "MMU.h"
 #include "Utils.h"
+#include <iostream>
 
 CPU::CPU(MMU& mmu) : mmu(mmu) {
     reset();
@@ -47,7 +48,7 @@ void CPU::checkIRQ() {
     if (irqDisabled) return;
     
     uint16_t ime = mmu.getIME();
-    if (!ime) return;
+    if (!(ime & 1)) return;
     
     uint16_t ie = mmu.getIE();
     uint16_t if_ = mmu.getIF();
@@ -753,6 +754,8 @@ void CPU::handleSWI(uint8_t comment) {
             uint16_t if_ = mmu.getIF();
             uint16_t mask = registers[1] & 0xFFFF;
             
+            mmu.setIME(1);
+            
             if (registers[0] != 0) {
                 mmu.setIF(if_ & ~mask);
                 if_ = mmu.getIF();
@@ -767,9 +770,11 @@ void CPU::handleSWI(uint8_t comment) {
             registers[0] = 1;
             registers[1] = 1;
             
+            mmu.setIME(1);
+            
             uint16_t if_ = mmu.getIF();
             if (if_ & 0x01) {
-                mmu.setIF(if_ & ~0x01);
+                mmu.setIF(if_ &~ 0x01);
             }
             break;
         }

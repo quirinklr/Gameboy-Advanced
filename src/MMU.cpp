@@ -2,12 +2,14 @@
 #include "PPU.h"
 #include "Utils.h"
 #include <fstream>
+#include <iostream>
 
 MMU::MMU() {
     reset();
 }
 
 void MMU::reset() {
+    std::cout << "WARNING: MMU::reset() called!" << std::endl;
     bios.fill(0);
     ewram.fill(0);
     iwram.fill(0);
@@ -142,10 +144,17 @@ void MMU::write8(uint32_t address, uint8_t value) {
             break;
         case 0x04: {
             uint32_t reg = (address & 0x3FF) >> 1;
+            
+            uint16_t oldValue = io[reg];
+            
             if (address & 1) {
                 io[reg] = (io[reg] & 0x00FF) | (value << 8);
             } else {
                 io[reg] = (io[reg] & 0xFF00) | value;
+            }
+            
+            if (reg == 0 && io[reg] != oldValue) {
+                std::cout << "io[0] write8: old=" << std::hex << oldValue << " new=" << io[reg] << " PC=" << cpuPC << std::dec << std::endl;
             }
             break;
         }
@@ -204,6 +213,15 @@ void MMU::write16(uint32_t address, uint16_t value) {
     address &= ~1;
     
     switch (region) {
+        case 0x04: {
+            uint32_t reg = (address & 0x3FF) >> 1;
+            io[reg] = value;
+            
+            if (reg == 0) {
+                std::cout << "DISPCNT write16: value=" << std::hex << value << " io[0]=" << io[0] << std::dec << std::endl;
+            }
+            return;
+        }
         case 0x05: {
             uint32_t offset = address & 0x3FF;
             palette[offset] = value & 0xFF;
@@ -246,6 +264,11 @@ void MMU::write32(uint32_t address, uint32_t value) {
     address &= ~3;
     
     switch (region) {
+        case 0x04: {
+            write16(address, value & 0xFFFF);
+            write16(address + 2, (value >> 16) & 0xFFFF);
+            return;
+        }
         case 0x05: {
             uint32_t offset = address & 0x3FF;
             palette[offset] = value & 0xFF;
@@ -283,6 +306,10 @@ uint16_t MMU::readIO(uint32_t address) {
 void MMU::writeIO(uint32_t address, uint16_t value) {
     uint32_t reg = (address & 0x3FF) >> 1;
     io[reg] = value;
+}
+
+uint16_t MMU::getDisplayControl() const {
+    return io[0];
 }
 
 void MMU::detectSaveType() {

@@ -1,5 +1,6 @@
 #include "PPU.h"
 #include "MMU.h"
+#include <iostream>
 
 PPU::PPU(MMU& mmu) : mmu(mmu) {
     reset();
@@ -100,12 +101,21 @@ void PPU::renderMode0() {
     }
 
     uint16_t dispcnt = mmu.getDisplayControl();
+    
+    static int logCounter = 0;
+    if (++logCounter >= 1000 && scanline == 0) {
+        logCounter = 0;
+        std::cout << "renderMode0: DISPCNT=0x" << std::hex << dispcnt << std::dec << std::endl;
+    }
 
     for (int priority = 3; priority >= 0; priority--) {
         for (int bg = 3; bg >= 0; bg--) {
             if (dispcnt & (1 << (8 + bg))) {
                 uint16_t bgcnt = mmu.getBGControl(bg);
                 if ((bgcnt & 3) == priority) {
+                    if (scanline == 0 && logCounter == 1) {
+                        std::cout << "  Calling renderBackground(BG" << bg << ") prio=" << priority << " bgcnt=0x" << std::hex << bgcnt << std::dec << std::endl;
+                    }
                     renderBackground(bg);
                 }
             }

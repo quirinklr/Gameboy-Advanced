@@ -24,6 +24,10 @@ public:
     void clearFrameReady();
 
     void updateKey(int id, bool pressed);
+    
+    uint16_t getDISPCNT() const;
+    uint16_t getIME() const;
+    uint16_t getIE() const;
 
 private:
     std::unique_ptr<MMU> mmu;

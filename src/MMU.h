@@ -40,7 +40,7 @@ public:
     uint8_t* getPalette() { return palette.data(); }
     uint8_t* getOAM() { return oam.data(); }
 
-    uint16_t getDisplayControl() const { return io[0]; }
+    uint16_t getDisplayControl() const;
     uint16_t getDisplayStatus() const { return io[2]; }
     uint16_t getVCount() const { return io[3]; }
 
@@ -55,6 +55,7 @@ public:
     uint16_t getIF() const { return io[0x101]; }
     void setIF(uint16_t value) { io[0x101] = value; }
     uint16_t getIME() const { return io[0x104]; }
+    void setIME(uint16_t value) { io[0x104] = value; }
 
     void setKeyInput(uint16_t state) { keyInput = state; }
     
