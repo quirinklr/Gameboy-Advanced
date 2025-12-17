@@ -67,6 +67,8 @@ void PPU::renderScanline() {
 
     switch (mode) {
         case 0:
+        case 1:
+        case 2:
             renderMode0();
             break;
         case 3:

@@ -740,20 +740,9 @@ void CPU::handleSWI(uint8_t comment) {
         case 0x01:
             break;
         case 0x02:
+        case 0x04:
+        case 0x05:
             break;
-        case 0x05: {
-            int16_t a = static_cast<int16_t>(registers[0] & 0xFFFF);
-            int16_t b = static_cast<int16_t>(registers[1] & 0xFFFF);
-            if (a < 0) a = -a;
-            if (b < 0) b = -b;
-            while (b != 0) {
-                int16_t t = b;
-                b = a % b;
-                a = t;
-            }
-            registers[0] = a;
-            break;
-        }
         case 0x06: {
             int32_t numerator = static_cast<int32_t>(registers[0]);
             int32_t denominator = static_cast<int32_t>(registers[1]);
