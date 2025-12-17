@@ -7,6 +7,8 @@ class CPU;
 class MMU;
 class PPU;
 class Timer;
+class DMA;
+class APU;
 
 class GBA {
 public:
@@ -28,4 +30,6 @@ private:
     std::unique_ptr<CPU> cpu;
     std::unique_ptr<PPU> ppu;
     std::unique_ptr<Timer> timer;
+    std::unique_ptr<DMA> dma;
+    std::unique_ptr<APU> apu;
 };

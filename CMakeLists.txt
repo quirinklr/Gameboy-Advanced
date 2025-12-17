@@ -22,6 +22,8 @@ set(SOURCES
     src/PPU.cpp
     src/Flash.cpp
     src/Timer.cpp
+    src/DMA.cpp
+    src/APU.cpp
 )
 
 set(HEADERS
@@ -32,6 +34,8 @@ set(HEADERS
     src/Utils.h
     src/Flash.h
     src/Timer.h
+    src/DMA.h
+    src/APU.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -55,6 +59,8 @@ set(TEST_SOURCES
     src/PPU.cpp
     src/Flash.cpp
     src/Timer.cpp
+    src/DMA.cpp
+    src/APU.cpp
 )
 
 add_executable(GBA_Tests ${TEST_SOURCES})
@@ -69,6 +75,8 @@ add_executable(GBA_PPU_Tests
     src/PPU.cpp
     src/Flash.cpp
     src/Timer.cpp
+    src/DMA.cpp
+    src/APU.cpp
 )
 target_include_directories(GBA_PPU_Tests PRIVATE src tests)
 target_compile_definitions(GBA_PPU_Tests PRIVATE HEADLESS_TEST)
