@@ -120,19 +120,33 @@ void MMU::write8(uint32_t address, uint8_t value) {
             }
             break;
         }
-        case 0x05:
-            palette[address & 0x3FF] = value;
+        case 0x05: {
+            uint32_t base = (address & 0x3FF) & ~1;
+            palette[base] = value;
+            palette[base + 1] = value;
             break;
+        }
         case 0x06: {
             address &= 0x1FFFF;
             if (address >= 0x18000) address -= 0x8000;
+            
+            uint16_t dispcnt = io[0];
+            uint8_t mode = dispcnt & 0x7;
+            
+            bool isBitmapMode = (mode >= 3 && mode <= 5);
+            
+            if (isBitmapMode) {
+                if (address >= 0x14000) break;
+            } else {
+                if (address >= 0x10000) break;
+            }
+            
             uint32_t base = address & ~1;
             vram[base] = value;
             vram[base + 1] = value;
             break;
         }
         case 0x07:
-            oam[address & 0x3FF] = value;
             break;
         case 0x0E:
         case 0x0F:
@@ -143,29 +157,62 @@ void MMU::write8(uint32_t address, uint8_t value) {
 
 void MMU::write16(uint32_t address, uint16_t value) {
     uint32_t region = (address >> 24) & 0xFF;
-    if (region == 0x06) {
-        address &= 0x1FFFF;
-        if (address >= 0x18000) address -= 0x8000;
-        address &= ~1;  
-        vram[address] = value & 0xFF;
-        vram[address + 1] = (value >> 8) & 0xFF;
-        return;
+    address &= ~1;
+    
+    switch (region) {
+        case 0x05: {
+            uint32_t offset = address & 0x3FF;
+            palette[offset] = value & 0xFF;
+            palette[offset + 1] = (value >> 8) & 0xFF;
+            return;
+        }
+        case 0x06: {
+            uint32_t addr = address & 0x1FFFF;
+            if (addr >= 0x18000) addr -= 0x8000;
+            vram[addr] = value & 0xFF;
+            vram[addr + 1] = (value >> 8) & 0xFF;
+            return;
+        }
+        case 0x07: {
+            uint32_t offset = address & 0x3FF;
+            oam[offset] = value & 0xFF;
+            oam[offset + 1] = (value >> 8) & 0xFF;
+            return;
+        }
     }
 
-    address &= ~1;
     write8(address, value & 0xFF);
     write8(address + 1, (value >> 8) & 0xFF);
 }
 
 void MMU::write32(uint32_t address, uint32_t value) {
     uint32_t region = (address >> 24) & 0xFF;
-    if (region == 0x06) {
-        write16(address, value & 0xFFFF);
-        write16(address + 2, (value >> 16) & 0xFFFF);
-        return;
+    address &= ~3;
+    
+    switch (region) {
+        case 0x05: {
+            uint32_t offset = address & 0x3FF;
+            palette[offset] = value & 0xFF;
+            palette[offset + 1] = (value >> 8) & 0xFF;
+            palette[offset + 2] = (value >> 16) & 0xFF;
+            palette[offset + 3] = (value >> 24) & 0xFF;
+            return;
+        }
+        case 0x06: {
+            write16(address, value & 0xFFFF);
+            write16(address + 2, (value >> 16) & 0xFFFF);
+            return;
+        }
+        case 0x07: {
+            uint32_t offset = address & 0x3FF;
+            oam[offset] = value & 0xFF;
+            oam[offset + 1] = (value >> 8) & 0xFF;
+            oam[offset + 2] = (value >> 16) & 0xFF;
+            oam[offset + 3] = (value >> 24) & 0xFF;
+            return;
+        }
     }
 
-    address &= ~3;
     write8(address, value & 0xFF);
     write8(address + 1, (value >> 8) & 0xFF);
     write8(address + 2, (value >> 16) & 0xFF);
