@@ -21,6 +21,8 @@ public:
 
     void reset();
     void step();
+    void checkIRQ();
+    void triggerIRQ();
 
     uint32_t getRegister(int r) const;
     void setRegister(int r, uint32_t value);

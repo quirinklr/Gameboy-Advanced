@@ -15,7 +15,7 @@ void MMU::reset() {
     palette.fill(0);
     vram.fill(0);
     oam.fill(0);
-    sram.fill(0);
+    sram.fill(0xFF);
 }
 
 bool MMU::loadROM(const std::string& path) {
@@ -40,8 +40,11 @@ uint8_t MMU::read8(uint32_t address) {
 
     switch (region) {
         case 0x00:
-            if (address < 0x4000 && biosLoaded) {
-                return bios[address];
+            if (address < 0x4000) {
+                if (cpuPC < 0x4000) {
+                    return bios[address];
+                }
+                return (lastBiosFetch >> ((address & 3) * 8)) & 0xFF;
             }
             return 0;
         case 0x02:
@@ -91,11 +94,25 @@ uint8_t MMU::read8(uint32_t address) {
 }
 
 uint16_t MMU::read16(uint32_t address) {
+    uint32_t region = (address >> 24) & 0xFF;
+    
+    if (region == 0x0E || region == 0x0F) {
+        uint8_t val = sram[address & 0xFFFF];
+        return val | (val << 8);
+    }
+    
     address &= ~1;
     return read8(address) | (read8(address + 1) << 8);
 }
 
 uint32_t MMU::read32(uint32_t address) {
+    uint32_t region = (address >> 24) & 0xFF;
+    
+    if (region == 0x0E || region == 0x0F) {
+        uint8_t val = sram[address & 0xFFFF];
+        return val | (val << 8) | (val << 16) | (val << 24);
+    }
+    
     address &= ~3;
     return read8(address) | (read8(address + 1) << 8) |
            (read8(address + 2) << 16) | (read8(address + 3) << 24);
@@ -157,6 +174,13 @@ void MMU::write8(uint32_t address, uint8_t value) {
 
 void MMU::write16(uint32_t address, uint16_t value) {
     uint32_t region = (address >> 24) & 0xFF;
+    
+    if (region == 0x0E || region == 0x0F) {
+        uint8_t byteToWrite = (address & 1) ? ((value >> 8) & 0xFF) : (value & 0xFF);
+        sram[address & 0xFFFF] = byteToWrite;
+        return;
+    }
+    
     address &= ~1;
     
     switch (region) {
@@ -187,6 +211,14 @@ void MMU::write16(uint32_t address, uint16_t value) {
 
 void MMU::write32(uint32_t address, uint32_t value) {
     uint32_t region = (address >> 24) & 0xFF;
+    
+    if (region == 0x0E || region == 0x0F) {
+        int byteIndex = address & 3;
+        uint8_t byteToWrite = (value >> (byteIndex * 8)) & 0xFF;
+        sram[address & 0xFFFF] = byteToWrite;
+        return;
+    }
+    
     address &= ~3;
     
     switch (region) {

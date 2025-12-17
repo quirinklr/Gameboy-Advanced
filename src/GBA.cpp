@@ -32,6 +32,7 @@ void GBA::runFrame() {
     while (!ppu->isFrameReady()) {
         cpu->step();
         ppu->step(1);
+        cpu->checkIRQ();
     }
 }
 

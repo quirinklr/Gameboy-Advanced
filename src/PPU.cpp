@@ -40,10 +40,17 @@ void PPU::step(int cycles) {
     }
 
     uint16_t dispstat = mmu.getDisplayStatus();
+    bool wasVBlank = (dispstat & 1);
     dispstat &= 0xFFF8;
 
-    if (scanline >= VDRAW_LINES && scanline < TOTAL_LINES) {
+    bool inVBlank = (scanline >= VDRAW_LINES && scanline < TOTAL_LINES);
+    if (inVBlank) {
         dispstat |= 1;
+        
+        if (!wasVBlank && (dispstat & 0x08)) {
+            uint16_t if_ = mmu.getIF();
+            mmu.setIF(if_ | 0x01);
+        }
     }
 
     uint8_t vcountCompare = (dispstat >> 8) & 0xFF;

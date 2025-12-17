@@ -22,6 +22,8 @@ void CPU::reset() {
 }
 
 void CPU::step() {
+    mmu.setCpuPC(registers[15]);
+    
     if (inThumbMode()) {
         uint16_t instruction = mmu.read16(registers[15]);
         registers[15] += 2;
@@ -32,6 +34,38 @@ void CPU::step() {
         executeARM(instruction);
     }
     cycles++;
+}
+
+void CPU::checkIRQ() {
+    bool irqDisabled = (cpsr >> 7) & 1;
+    if (irqDisabled) return;
+    
+    uint16_t ime = mmu.getIME();
+    if (!ime) return;
+    
+    uint16_t ie = mmu.getIE();
+    uint16_t if_ = mmu.getIF();
+    
+    if (ie & if_) {
+        triggerIRQ();
+    }
+}
+
+void CPU::triggerIRQ() {
+    bankedIRQ[0] = registers[13];
+    bankedIRQ[1] = registers[14];
+    spsr[1] = cpsr;
+    
+    registers[14] = registers[15];
+    
+    cpsr = (cpsr & ~0x1F) | static_cast<uint32_t>(CPUMode::IRQ);
+    cpsr |= (1 << 7);
+    cpsr &= ~(1 << 5);
+    
+    uint32_t handler = mmu.read32(0x03007FFC);
+    registers[15] = handler;
+    
+    mmu.setLastBiosFetch(0xE25EF004);
 }
 
 uint32_t CPU::getRegister(int r) const {
@@ -467,7 +501,7 @@ void CPU::armHalfwordDataTransfer(uint32_t instruction) {
         }
     } else {
         if (SH == 1) {
-            mmu.write16(address & ~1, registers[Rd] & 0xFFFF);
+            mmu.write16(address, registers[Rd] & 0xFFFF);
         }
     }
 
@@ -696,6 +730,7 @@ void CPU::armMSRImm(uint32_t instruction) {
 void CPU::armSoftwareInterrupt(uint32_t instruction) {
     uint8_t comment = (instruction >> 16) & 0xFF;
     handleSWI(comment);
+    mmu.setLastBiosFetch(0xE3A02004);
 }
 
 void CPU::handleSWI(uint8_t comment) {
@@ -1405,6 +1440,7 @@ void CPU::thumbConditionalBranch(uint16_t instruction) {
 void CPU::thumbSoftwareInterrupt(uint16_t instruction) {
     uint8_t comment = instruction & 0xFF;
     handleSWI(comment);
+    mmu.setLastBiosFetch(0xE3A02004);
 }
 
 void CPU::thumbUnconditionalBranch(uint16_t instruction) {

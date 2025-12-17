@@ -48,6 +48,10 @@ public:
     uint16_t getIME() const { return io[0x104]; }
 
     void setKeyInput(uint16_t state) { keyInput = state; }
+    
+    void setCpuPC(uint32_t pc) { cpuPC = pc; }
+    void setLastBiosFetch(uint32_t value) { lastBiosFetch = value; }
+    uint32_t getCpuPC() const { return cpuPC; }
 
 private:
     std::array<uint8_t, 0x4000> bios{};
@@ -64,4 +68,6 @@ private:
 
     bool biosLoaded = false;
     uint16_t keyInput = 0x03FF;
+    uint32_t cpuPC = 0x08000000;
+    uint32_t lastBiosFetch = 0xE129F000;
 };
