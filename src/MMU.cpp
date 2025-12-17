@@ -9,7 +9,6 @@ MMU::MMU() {
 }
 
 void MMU::reset() {
-    std::cout << "WARNING: MMU::reset() called!" << std::endl;
     bios.fill(0);
     ewram.fill(0);
     iwram.fill(0);
@@ -218,7 +217,8 @@ void MMU::write16(uint32_t address, uint16_t value) {
             io[reg] = value;
             
             if (reg == 0) {
-                std::cout << "DISPCNT write16: value=" << std::hex << value << " io[0]=" << io[0] << std::dec << std::endl;
+                std::cout << "DISPCNT write16: value=" << std::hex << value << " io[0]=" << io[0] 
+                          << " &io=" << (void*)io.data() << std::dec << std::endl;
             }
             return;
         }

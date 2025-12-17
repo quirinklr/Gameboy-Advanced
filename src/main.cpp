@@ -151,17 +151,6 @@ int main(int argc, char* argv[]) {
         }
 
         gba.runFrame();
-        
-        static int debugFrames = 0;
-        if (++debugFrames >= 180 && !testMode) {
-            debugFrames = 0;
-            const uint32_t* fb = gba.getFramebuffer();
-            int nonBlackPixels = 0;
-            for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-                if (fb[i] != 0xFF000000 && fb[i] != 0) nonBlackPixels++;
-            }
-            std::cout << "Non-black pixels: " << nonBlackPixels << std::endl;
-        }
 
         SDL_UpdateTexture(texture, nullptr, gba.getFramebuffer(), SCREEN_WIDTH * sizeof(uint32_t));
 
