@@ -6,6 +6,7 @@
 class CPU;
 class MMU;
 class PPU;
+class Timer;
 
 class GBA {
 public:
@@ -26,4 +27,5 @@ private:
     std::unique_ptr<MMU> mmu;
     std::unique_ptr<CPU> cpu;
     std::unique_ptr<PPU> ppu;
+    std::unique_ptr<Timer> timer;
 };

@@ -2,11 +2,13 @@
 #include "CPU.h"
 #include "MMU.h"
 #include "PPU.h"
+#include "Timer.h"
 
 GBA::GBA() {
     mmu = std::make_unique<MMU>();
     ppu = std::make_unique<PPU>(*mmu);
     cpu = std::make_unique<CPU>(*mmu);
+    timer = std::make_unique<Timer>(*mmu);
 
     mmu->connectPPU(ppu.get());
 }
@@ -24,6 +26,7 @@ bool GBA::loadROM(const std::string& path) {
 void GBA::reset() {
     cpu->reset();
     ppu->reset();
+    timer->reset();
 }
 
 void GBA::runFrame() {
@@ -31,6 +34,7 @@ void GBA::runFrame() {
 
     while (!ppu->isFrameReady()) {
         cpu->step();
+        timer->step(1);
         ppu->step(1);
         cpu->checkIRQ();
     }
