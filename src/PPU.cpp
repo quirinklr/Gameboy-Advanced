@@ -65,6 +65,10 @@ void PPU::step(int cycles) {
 void PPU::renderScanline() {
     uint16_t dispcnt = mmu.getDisplayControl();
     uint8_t mode = dispcnt & 0x7;
+    
+    if (mode > 5) {
+        mode = 0;
+    }
 
     switch (mode) {
         case 0:
@@ -81,11 +85,6 @@ void PPU::renderScanline() {
         case 5:
             renderMode5();
             break;
-        default:
-            for (int x = 0; x < SCREEN_WIDTH; x++) {
-                framebuffer[scanline * SCREEN_WIDTH + x] = 0xFF000000;
-            }
-            break;
     }
 
     renderSprites();
@@ -94,6 +93,11 @@ void PPU::renderScanline() {
 void PPU::renderMode0() {
     uint8_t* palette = mmu.getPalette();
     uint16_t backdropColor = palette[0] | (palette[1] << 8);
+    
+    if (backdropColor == 0) {
+        backdropColor = 0x001F;
+    }
+    
     uint32_t backdrop32 = rgb15to32(backdropColor);
 
     for (int x = 0; x < SCREEN_WIDTH; x++) {
@@ -101,21 +105,6 @@ void PPU::renderMode0() {
     }
 
     uint16_t dispcnt = mmu.getDisplayControl();
-    
-    static int logCounter = 0;
-    static bool logged = false;
-    if (++logCounter >= 500 && scanline == 0 && !logged) {
-        logged = true;
-        std::cout << "renderMode0 called: DISPCNT=0x" << std::hex << dispcnt << std::dec << std::endl;
-        
-        for (int bg = 0; bg < 4; bg++) {
-            if (dispcnt & (1 << (8 + bg))) {
-                uint16_t bgcnt = mmu.getBGControl(bg);
-                std::cout << "  BG" << bg << " enabled: BGCNT=0x" << std::hex << bgcnt 
-                          << " priority=" << (bgcnt & 3) << std::dec << std::endl;
-            }
-        }
-    }
 
     for (int priority = 3; priority >= 0; priority--) {
         for (int bg = 3; bg >= 0; bg--) {
