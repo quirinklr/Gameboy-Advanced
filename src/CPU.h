@@ -34,6 +34,9 @@ public:
     void setCPSR(uint32_t value) { cpsr = value; }
 
     bool inThumbMode() const { return cpsr & (1 << 5); }
+    
+    bool isHalted() const { return halted; }
+    void setHalted(bool h) { halted = h; }
 
 private:
     void executeARM(uint32_t instruction);
@@ -99,4 +102,5 @@ private:
     std::array<uint32_t, 2> bankedUND{};
 
     uint64_t cycles = 0;
+    bool halted = false;
 };

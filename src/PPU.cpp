@@ -48,7 +48,7 @@ void PPU::step(int cycles) {
     if (inVBlank) {
         dispstat |= 1;
         
-        if (!wasVBlank && (dispstat & 0x08)) {
+        if (!wasVBlank) {
             uint16_t if_ = mmu.getIF();
             mmu.setIF(if_ | 0x01);
         }
@@ -93,11 +93,6 @@ void PPU::renderScanline() {
 void PPU::renderMode0() {
     uint8_t* palette = mmu.getPalette();
     uint16_t backdropColor = palette[0] | (palette[1] << 8);
-    
-    if (backdropColor == 0) {
-        backdropColor = 0x001F;
-    }
-    
     uint32_t backdrop32 = rgb15to32(backdropColor);
 
     for (int x = 0; x < SCREEN_WIDTH; x++) {

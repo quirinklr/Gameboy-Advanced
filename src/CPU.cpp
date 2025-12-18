@@ -29,6 +29,8 @@ void CPU::reset() {
 
 
 void CPU::step() {
+    if (halted) return;
+    
     mmu.setCpuPC(registers[15]);
     
     if (inThumbMode()) {
@@ -44,14 +46,18 @@ void CPU::step() {
 }
 
 void CPU::checkIRQ() {
+    uint16_t ie = mmu.getIE();
+    uint16_t if_ = mmu.getIF();
+    
+    if (halted && (ie & if_)) {
+        halted = false;
+    }
+    
     bool irqDisabled = (cpsr >> 7) & 1;
     if (irqDisabled) return;
     
     uint16_t ime = mmu.getIME();
     if (!(ime & 1)) return;
-    
-    uint16_t ie = mmu.getIE();
-    uint16_t if_ = mmu.getIF();
     
     if (ie & if_) {
         triggerIRQ();
@@ -769,13 +775,8 @@ void CPU::handleSWI(uint8_t comment) {
         case 0x05: {
             registers[0] = 1;
             registers[1] = 1;
-            
             mmu.setIME(1);
-            
-            uint16_t if_ = mmu.getIF();
-            if (if_ & 0x01) {
-                mmu.setIF(if_ &~ 0x01);
-            }
+            halted = true;
             break;
         }
 
