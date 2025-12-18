@@ -1189,7 +1189,7 @@ void CPU::thumbPCRelativeLoad(uint16_t instruction) {
     uint8_t Rd = (instruction >> 8) & 7;
     uint8_t imm = instruction & 0xFF;
 
-    uint32_t address = (registers[15] & ~2) + (imm << 2);
+    uint32_t address = ((registers[15] + 2) & ~2) + (imm << 2);
     registers[Rd] = mmu.read32(address);
 }
 
